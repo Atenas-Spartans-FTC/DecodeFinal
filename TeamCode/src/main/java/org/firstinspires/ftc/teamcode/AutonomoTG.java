@@ -9,17 +9,24 @@ import com.qualcomm.robotcore.util.ElapsedTime;
 
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 
-import java.sql.Timestamp;
-import java.util.Timer;
-
 @Autonomous
 public class AutonomoTG extends LinearOpMode {
     private DcMotor dd,de,td,te;
     GoBildaPinpointDriver pinpointer;
+
     private final double kp = 0.000077;//verificar no robo
     private final double ki = 0.0001;//verificar no robo
     private final double kd = 0.0000003;
-    double setpoint = 0, errorsum = 0, ilimit = 500, lasterror = 0;
+    double ilimit = 500;
+
+    double errorsumX = 0, errorsumY = 0, errorsumH = 0;
+    double lastErrorX = 0, lastErrorY = 0, lastErrorH = 0;
+
+    // PID de heading (normalmente mais forte)
+    double kpH = 0.01;
+    double kiH = 0.0;
+    double kdH = 0.0005;
+
     ElapsedTime time = new ElapsedTime();
     @Override
     public void runOpMode() throws InterruptedException {
@@ -45,56 +52,107 @@ public class AutonomoTG extends LinearOpMode {
         final double lastX = pinpointer.getEncoderX();
         final double lastY = pinpointer.getEncoderY();
 
-        errorsum = 0;
-        lasterror = 0;
+        errorsumX = 0;
+        lastErrorX = 0;
+        errorsumY = 0;
+        lastErrorY = 0;
+        errorsumH = 0;
+        lastErrorH = 0;
 
         telemetry.addData("Status", "Initialized");
         telemetry.update();
 
         waitForStart();
-        while (opModeIsActive()){
+        while (opModeIsActive()) {
+
             pinpointer.update();
 
             double x = pinpointer.getEncoderX() - lastX;
             double y = pinpointer.getEncoderY() - lastY;
-            double z = pinpointer.getHeading(AngleUnit.DEGREES);
+            double heading = pinpointer.getHeading(AngleUnit.RADIANS);
 
-            setpoint = 10000;
+            telemetry.addData("X", x);
+            telemetry.addData("Y", y);
+            telemetry.addData("Heading", heading);
 
-            double error = setpoint - y;
-            if (Math.abs(error) < ilimit ) {
-                errorsum += error * time.seconds();
-            }
-            double errorrate = (error - lasterror) / time.seconds();
+            goToPID(10000, 10000, 0, x, y, heading);
 
-            time.reset();
-            lasterror = error;
-
-            double m = 640;
-            if (error < 0 && errorsum > 0){
-                errorsum = -m;
-            }else if (error > 0 && errorsum < 0){
-                errorsum = m;
-            }
-
-            double speed = 0;
-            if(error != 0){
-                speed = kp * error + ki * errorsum + kd * errorrate;
-            }
-
-            dd.setPower(speed);
-            de.setPower(speed);
-            td.setPower(speed);
-            te.setPower(speed);
-
-            telemetry.addData("Odometria Y",y);
-            telemetry.addData("Odometria X",x);
-            telemetry.addData("Odometria Z",z);
-            telemetry.addData("Error", error);
-            telemetry.addData("Erro Sum", errorsum);
-            telemetry.addData("Erro Rate", errorrate);
-            telemetry.addData("Poder", speed);
             telemetry.update();
         }
+    }
+    public void goToPID(
+            double setpointX,
+            double setpointY,
+            double setpointHeading,
+            double positionX,
+            double positionY,
+            double heading
+    ) {
+        double dt = time.seconds();
+        time.reset();
+
+        // ---------- ERROS ----------
+        double errorX = setpointX - positionX;
+        double errorY = setpointY - positionY;
+
+        double errorH = setpointHeading - heading;
+        errorH = Math.atan2(Math.sin(errorH), Math.cos(errorH));
+
+        // ---------- INTEGRAIS ----------
+        if (Math.abs(errorX) < ilimit) errorsumX += errorX * dt;
+        if (Math.abs(errorY) < ilimit) errorsumY += errorY * dt;
+        if (Math.abs(errorH) < ilimit) errorsumH += errorH * dt;
+
+        // ---------- DERIVADAS ----------
+        double dX = (errorX - lastErrorX) / dt;
+        double dY = (errorY - lastErrorY) / dt;
+        double dH = (errorH - lastErrorH) / dt;
+
+        lastErrorX = errorX;
+        lastErrorY = errorY;
+        lastErrorH = errorH;
+
+        // ---------- PID ----------
+        double xPower = kp * errorX + ki * errorsumX + kd * dX;
+        double yPower = kp * errorY + ki * errorsumY + kd * dY;
+        double turnPower = kpH * errorH + kiH * errorsumH + kdH * dH;
+
+        // ---------- MECANUM ----------
+        drive(yPower, xPower, turnPower);
+
+        // ---------- TELEMETRIA ----------
+        telemetry.addData("Erro X", errorX);
+        telemetry.addData("Erro Y", errorY);
+        telemetry.addData("Erro Heading", errorH);
+        telemetry.addData("Soma Erro X",errorsumX);
+        telemetry.addData("Soma Erro Y",errorsumY);
+        telemetry.addData("Soma Erro Heading",errorsumH);
+        telemetry.addData("Derivada X",errorsumX);
+        telemetry.addData("Derivada Y",errorsumY);
+        telemetry.addData("Derivada Heading",errorsumH);
+        telemetry.addData("Power X", xPower);
+        telemetry.addData("Power Y", yPower);
+        telemetry.addData("Power Turn", turnPower);
+    }
+    public void drive(double y, double x, double turn) {
+
+        double teta = Math.atan2(y, x);
+        double power = Math.hypot(x, y);
+
+        double sin = Math.sin(teta - Math.PI / 4);
+        double cos = Math.cos(teta - Math.PI / 4);
+        double max = Math.max(Math.abs(sin), Math.abs(cos));
+
+        double dep = power * cos / max + turn;
+        double ddp = power * sin / max - turn;
+        double tep = power * sin / max + turn;
+        double tdp = power * cos / max - turn;
+
+        double scale = Math.max(1, power + Math.abs(turn));
+
+        de.setPower(dep / scale);
+        dd.setPower(ddp / scale);
+        te.setPower(tep / scale);
+        td.setPower(tdp / scale);
     }
 }
