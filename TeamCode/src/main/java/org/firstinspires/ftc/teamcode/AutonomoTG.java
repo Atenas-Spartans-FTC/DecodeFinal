@@ -17,15 +17,21 @@ public class AutonomoTG extends LinearOpMode {
     private final double kp = 0.000077;//verificar no robo
     private final double ki = 0.0001;//verificar no robo
     private final double kd = 0.0000003;
-    double ilimit = 500;
+
+    // PID de heading (normalmente mais forte)
+    private final double kpH = 0.01;
+    private final double kiH = 0.0;
+    private final double kdH = 0.0005;
+
+    private final double ilimit = 500;
 
     double errorsumX = 0, errorsumY = 0, errorsumH = 0;
     double lastErrorX = 0, lastErrorY = 0, lastErrorH = 0;
 
-    // PID de heading (normalmente mais forte)
-    double kpH = 0.01;
-    double kiH = 0.0;
-    double kdH = 0.0005;
+    boolean chegou;
+    final double positionTolerance = 50;     // encoder ticks (ajuste no robô)
+    final double headingTolerance = Math.toRadians(2); // 2 graus
+    final double powerTolerance = 0.05;       // potência mínima
 
     ElapsedTime time = new ElapsedTime();
     @Override
@@ -75,19 +81,19 @@ public class AutonomoTG extends LinearOpMode {
             telemetry.addData("Y", y);
             telemetry.addData("Heading", heading);
 
-            goToPID(10000, 10000, 0, x, y, heading);
+            chegou = goToPID(
+                    10000,
+                    10000,
+                    0,
+                    x,
+                    y,
+                    heading
+            );
 
             telemetry.update();
         }
     }
-    public void goToPID(
-            double setpointX,
-            double setpointY,
-            double setpointHeading,
-            double positionX,
-            double positionY,
-            double heading
-    ) {
+    public boolean goToPID(double setpointX, double setpointY, double setpointHeading, double positionX, double positionY, double heading) {
         double dt = time.seconds();
         time.reset();
 
@@ -120,6 +126,21 @@ public class AutonomoTG extends LinearOpMode {
         // ---------- MECANUM ----------
         drive(yPower, xPower, turnPower);
 
+        // ---------- CONDIÇÃO DE CHEGADA ----------
+        boolean positionOk =
+                Math.abs(errorX) < positionTolerance &&
+                        Math.abs(errorY) < positionTolerance;
+
+        boolean headingOk =
+                Math.abs(errorH) < headingTolerance;
+
+        boolean powerOk =
+                Math.abs(xPower) < powerTolerance &&
+                        Math.abs(yPower) < powerTolerance &&
+                        Math.abs(turnPower) < powerTolerance;
+
+        boolean arrived = positionOk && headingOk && powerOk;
+
         // ---------- TELEMETRIA ----------
         telemetry.addData("Erro X", errorX);
         telemetry.addData("Erro Y", errorY);
@@ -133,6 +154,9 @@ public class AutonomoTG extends LinearOpMode {
         telemetry.addData("Power X", xPower);
         telemetry.addData("Power Y", yPower);
         telemetry.addData("Power Turn", turnPower);
+        telemetry.addData("Chegou", arrived);
+
+        return arrived;
     }
     public void drive(double y, double x, double turn) {
 
