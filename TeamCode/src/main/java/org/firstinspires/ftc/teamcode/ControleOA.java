@@ -19,6 +19,7 @@ public class ControleOA extends LinearOpMode {
     private LLResult result;
     private IMU imu;
     private DcMotor dd, de, td, te;// Variáveis dos motores
+    private DcMotor l1, l2;
     private Boolean lado = null; // null = não lido // true = azul // false = vermelho
     double sin, cos, teta, power, max, dep, ddp, tep, tdp;
 
@@ -29,6 +30,8 @@ public class ControleOA extends LinearOpMode {
         de = hardwareMap.get(DcMotor.class, "de"); // 1
         td = hardwareMap.get(DcMotor.class, "td"); // 2
         te = hardwareMap.get(DcMotor.class, "te"); // 3
+        l1 = hardwareMap.get(DcMotor.class, "l1"); // exp 1
+        l2 = hardwareMap.get(DcMotor.class, "l2"); // exp 2
 
         imu = hardwareMap.get(IMU.class, "imu"); //
 
@@ -58,6 +61,17 @@ public class ControleOA extends LinearOpMode {
             fullTelemetry();
             //Chassis
             drive(-gamepad1.left_stick_x, gamepad1.left_stick_y, gamepad1.right_stick_x, getHeadingR());
+
+            if(gamepad1.a){
+                l1.setPower(1);
+                l2.setPower(1);
+            }else if (gamepad1.b){
+                l1.setPower(-1);
+                l2.setPower(-1);
+            }else{
+                l1.setPower(0);
+                l2.setPower(0);
+            }
 
             //Lançador
 
